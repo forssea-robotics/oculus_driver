@@ -19,6 +19,8 @@
 #pragma once
 
 #include <eventpp/callbacklist.h>
+#include <eventpp/eventdispatcher.h>
+#include <eventpp/utilities/argumentadapter.h>
 #include <fmt/format.h>
 #include <spdlog/spdlog.h>
 
@@ -73,6 +75,7 @@ class SonarClient
     
     using ErrorCallbacksType = eventpp::CallbackList<void(const boost::system::error_code&)>;
     using ConnectCallbacksType = eventpp::CallbackList<void()>;
+    using MessageType = oculus::MessageType;
 
     private:
     const std::shared_ptr<spdlog::logger> logger;
@@ -92,8 +95,21 @@ class SonarClient
     Clock                        clock_;
     
     StatusListener statusListener_;
-    ErrorCallbacksType errorCallbacks;
-    ConnectCallbacksType connectCallbacks;
+    // ErrorCallbacksType errorCallbacks;
+    // ConnectCallbacksType connectCallbacks;
+    eventpp::EventDispatcher<MessageType, void(const std::shared_ptr<const BaseMessage>)> dispatcher;
+
+
+    template <typename T>
+    void dispatch(const std::shared_ptr<const T> msg) {
+        dispatcher.dispatch(T::mtype, msg);
+    }
+
+    template <typename T, typename... Args>
+    typename std::enable_if_t<std::is_constructible_v<T, Args...>> 
+            dispatch(Args &&...args) {
+        dispatch(std::make_shared<const T> (std::forward<Args>(args)...));
+    }
     
 
     Message::Ptr message_;
@@ -136,9 +152,85 @@ class SonarClient
 
     TimePoint last_header_stamp() const { return message_->timestamp(); }
 
-    inline auto& connect_callbacks() {return connectCallbacks; }
+    // inline auto& connect_callbacks() {return connectCallbacks; }
     inline auto& status_callbacks() { return statusListener_.callbacks(); }
-    inline auto& error_callbacks() { return errorCallbacks; }
+    // inline auto& error_callbacks() { return errorCallbacks; }
+
+    inline auto& get_dispatcher() { return dispatcher; }
+
+
+    template <typename T>
+    void add_callback(const MessageType message_type,
+                        std::function<void(const std::shared_ptr<const T>)> callback) {
+        static_assert(std::is_base_of<BaseMessage, T>::value,
+                    "T must be derived from BaseMessage");
+        dispatcher.appendListener(
+            message_type,
+            eventpp::argumentAdapter<void(const std::shared_ptr<const T>)>(callback));
+    }
+
+    template <typename T>
+    bool add_timed_callback(const MessageType message_type,
+                            std::function<void(const std::shared_ptr<const T>)> callback, 
+                            int timeout_ms = 5000) {
+        static_assert(std::is_base_of<BaseMessage, T>::value,
+                    "T must be derived from BaseMessage");
+        
+        std::atomic_flag called;
+        auto start = std::chrono::steady_clock::now();
+
+        auto handle = add_counter_callback<T>(message_type, 
+            [start, &callback, &called, timeout_ms](const std::shared_ptr<const T> msg) {
+                if (std::chrono::steady_clock::now() - start < std::chrono::milliseconds(timeout_ms)) {
+                    callback(msg);
+                    called.test_and_set();
+                }
+            }, 1);
+
+        while (!called.test() || std::chrono::steady_clock::now() - start <
+                                std::chrono::milliseconds(timeout_ms)) {
+            std::this_thread::sleep_for (std::chrono::milliseconds(100));
+        }
+        dispatcher.removeListener(message_type, handle);
+        return called.test();
+    }
+
+    template <typename T>
+    auto add_counter_callback(const MessageType message_type,
+                                std::function<void(const std::shared_ptr<const T>)> callback, 
+                                const int triggerCount = 1) {
+        static_assert(std::is_base_of<BaseMessage, T>::value,
+                    "T must be derived from BaseMessage");
+        return eventpp::counterRemover(dispatcher).appendListener(
+            message_type,
+            eventpp::argumentAdapter<void(const std::shared_ptr<const T>)>(
+                callback), triggerCount);
+    }
+
+    template <typename T>
+    void add_callback(std::function<void(const std::shared_ptr<const T>)> callback) {
+        add_callback<T>(T::mtype, callback);
+    }
+
+    template <typename T>
+    void add_callback(std::initializer_list<MessageType> messages,
+                        std::function<void(const std::shared_ptr<const T>)> callback) {
+        for (auto message : messages) {
+            add_callback<T>(message, callback);
+        }
+    }
+
+    template <typename T>
+    bool add_timed_callback(std::function<void(const std::shared_ptr<const T>)> callback, 
+                            int timeout_ms = 5000) {
+        return add_timed_callback<T>(T::mtype, callback, timeout_ms);
+    }
+    
+    template <typename T>
+    void add_counter_callback(std::function<void(const std::shared_ptr<const T>)> callback, 
+                                const int triggerCount = 1) {
+        add_counter_callback<T>(T::mtype, callback, triggerCount);
+    }
 };
 
 }  // namespace oculus

@@ -37,7 +37,11 @@ SonarClient::SonarClient(const IoServicePtr &service,
       checkerPeriod_(checkerPeriod),
       checkerTimer_(*service, checkerPeriod_),
       statusListener_(service, logger),
-      message_(Message::Create()) {}
+      message_(Message::Create()) {
+        statusListener_.callbacks().append([this](auto &msg) {
+            this->dispatch<StatusMessage>(msg);
+        });
+      }
 
 bool SonarClient::is_valid(const OculusMessageHeader& header)
 {
@@ -108,7 +112,7 @@ void SonarClient::checker_callback(const boost::system::error_code& err)
         // needs a reset.
         logger->warn("Broken connection. Informing user.");
         connectionState_ = Lost;
-        errorCallbacks(err);
+        dispatch<ErrorMessage>(err);
         return;
     }
 }
@@ -164,7 +168,7 @@ void SonarClient::close_connection()
         logger->info("Connection closed");
     }
     connectionState_ = Initializing;
-    status_callbacks()(statusListener_.get_latest());
+    dispatch<StatusMessage>(statusListener_.get_latest());
 }
 
 void SonarClient::on_first_status(const OculusStatusMsg& msg)
@@ -196,7 +200,7 @@ void SonarClient::connect_callback(const boost::system::error_code& err)
     {
         logger->error("Connection failure : {}. Remote: {}", err.message(),
                     remote_.address().to_string());
-        errorCallbacks(err);
+        dispatch<ErrorMessage>(err);
         return;
     }
 
@@ -213,7 +217,7 @@ void SonarClient::connect_callback(const boost::system::error_code& err)
     // this enters the ping data reception loop
     this->initiate_receive();
     this->on_connect();
-    connect_callbacks()();
+    dispatch<ConnectMessage>();
 }
 
 void SonarClient::initiate_receive()

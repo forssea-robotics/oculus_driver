@@ -33,7 +33,82 @@ namespace oculus
 class SonarClient;
 class FileReader;
 
-class Message
+struct BaseMessage {
+    virtual ~BaseMessage() = default;
+};
+
+enum class MessageType {
+    BASE_MESSAGE,
+    PING_MESSAGE,
+    ERROR_MESSAGE,
+    CONNECT_MESSAGE,
+    DUMMY_MESSAGE,
+    CONFIG_MESSAGE,
+    STATUS_MESSAGE,
+};
+
+template <MessageType message_type>
+struct MessageTypeDecorator : public BaseMessage {  
+    static constexpr MessageType mtype = message_type;
+    virtual ~MessageTypeDecorator() = default;
+};
+
+struct ConnectMessage : public MessageTypeDecorator<MessageType::CONNECT_MESSAGE>
+{
+    virtual ~ConnectMessage() = default;
+};
+
+struct ErrorMessage : public MessageTypeDecorator<MessageType::ERROR_MESSAGE>
+{
+    const boost::system::error_code error_code;
+
+    ErrorMessage(const boost::system::error_code ec)
+        : error_code(ec)
+    {
+    }
+
+    virtual ~ErrorMessage() = default;
+};
+
+struct DummyMessage : public MessageTypeDecorator<MessageType::DUMMY_MESSAGE>
+{
+    const OculusMessageHeader header;
+
+    DummyMessage(const OculusMessageHeader& header)
+        : header(header)
+    {
+    }
+
+    virtual ~DummyMessage() = default;
+};
+
+struct ConfigMessage : public MessageTypeDecorator<MessageType::CONFIG_MESSAGE>
+{
+    using PingConfig = OculusSimpleFireMessage2;
+    const PingConfig old_config;
+    const PingConfig new_config;
+
+    ConfigMessage(const PingConfig& old, const PingConfig& new_)
+        : old_config(old), new_config(new_)
+    {
+    }
+
+    virtual ~ConfigMessage() = default;
+};
+
+struct StatusMessage : public MessageTypeDecorator<MessageType::STATUS_MESSAGE>
+{
+    const OculusStatusMsg status;
+
+    StatusMessage(const OculusStatusMsg& status)
+        : status(status)
+    {
+    }
+
+    virtual ~StatusMessage() = default;
+};
+
+class Message : public MessageTypeDecorator<MessageType::BASE_MESSAGE>
 {
   public:
     // Only the SonarClient and FileReader classes are able to modify this
@@ -82,6 +157,8 @@ class Message
           data_(other.data_)
     {
     }
+
+    virtual ~Message() = default;
 
   public:
     static Ptr Create()
@@ -154,7 +231,7 @@ class Message
     }
 };
 
-class PingWrapper
+class PingWrapper 
 {
   public:
     using Ptr = std::shared_ptr<PingWrapper>;
@@ -171,6 +248,8 @@ class PingWrapper
         if (!msg_) { throw std::runtime_error("Trying to make a PingMessage out of empty data."); }
         if (!msg_->is_ping_message()) { throw std::runtime_error("Trying to make a PingMessage out of non-ping data."); }
     }
+
+    virtual ~PingWrapper() = default;
 
   public:
     Message::ConstPtr message() const
@@ -226,7 +305,6 @@ class PingWrapper
 
 class PingWrapper1 : public PingWrapper
 {
-  public:
     using Ptr = std::shared_ptr<PingWrapper1>;
     using ConstPtr = std::shared_ptr<const PingWrapper1>;
 
@@ -241,6 +319,8 @@ class PingWrapper1 : public PingWrapper
     }
 
   public:
+    virtual ~PingWrapper1() = default;
+
     static Ptr Create(const Message::ConstPtr& msg)
     {
         return Ptr(new PingWrapper1(msg));
@@ -394,6 +474,8 @@ class PingWrapper2 : public PingWrapper
     }
 
   public:
+    virtual ~PingWrapper2() = default;
+
     static Ptr Create(const Message::ConstPtr& msg)
     {
         return Ptr(new PingWrapper2(msg));
@@ -531,7 +613,7 @@ class PingWrapper2 : public PingWrapper
     }
 };
 
-class PingMessage
+class PingMessage : public MessageTypeDecorator<MessageType::PING_MESSAGE>
 {
   public:
     using Ptr = std::shared_ptr<PingMessage>;
@@ -556,10 +638,12 @@ class PingMessage
     {
     }
 
+    virtual ~PingMessage() = default;
+
   public:
     static Ptr Create(const Message::ConstPtr& msg)
     {
-        return Ptr(new PingMessage(msg));
+        return std::make_shared<PingMessage>(msg);
     }
 
     static Ptr Create(unsigned int size, const uint8_t* data, const TimePoint& stamp = TimePoint())

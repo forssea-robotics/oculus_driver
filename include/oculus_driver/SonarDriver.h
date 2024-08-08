@@ -58,10 +58,10 @@ class SonarDriver : public SonarClient
 
     // message callbacks will be called on every received message.
     // config callbacks will be called on (detectable) configuration changes.
-    MessageCallbacksType messageCallbacks_;
-    PingCallbacksType pingCallbacks_;
-    DummyCallbacksType dummyCallbacks_;
-    ConfigCallbacksType configCallbacks_;
+    // MessageCallbacksType messageCallbacks_;
+    // PingCallbacksType pingCallbacks_;
+    // DummyCallbacksType dummyCallbacks_;
+    // ConfigCallbacksType configCallbacks_;
 
     public:
 
@@ -84,10 +84,10 @@ class SonarDriver : public SonarClient
     /////////////////////////////////////////////
     // All remaining member function are related to callbacks and are merely
     // helpers to add callbacks.
-    auto& message_callbacks() { return messageCallbacks_; }
-    auto& ping_callbacks() { return pingCallbacks_; }
-    auto& dummy_callbacks() { return dummyCallbacks_; }
-    auto& config_callbacks() { return configCallbacks_; }
+    // auto& message_callbacks() { return messageCallbacks_; }
+    // auto& ping_callbacks() { return pingCallbacks_; }
+    // auto& dummy_callbacks() { return dummyCallbacks_; }
+    // auto& config_callbacks() { return configCallbacks_; }
 };
 
 }  // namespace oculus
