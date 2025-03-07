@@ -18,6 +18,3 @@ foreach(filename ${test_files})
     add_executable(${target_name} ${filename})
     target_link_libraries(${target_name} oculus_driver)
 endforeach()
-
-
-

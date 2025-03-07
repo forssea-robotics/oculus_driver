@@ -20,34 +20,35 @@
 #include <sstream>
 using namespace std;
 
-#include <oculus_driver/SonarDriver.h>
+#include <spdlog/spdlog.h>
+
+#include "oculus_driver/SonarDriver.h"
 using namespace oculus;
+
 
 void print_ping(const PingMessage::ConstPtr& ping)
 {
     static unsigned int count = 0;
     cout << "=============== Got Ping : " << count++ << endl;
-    //cout << pingMetadata << endl;
+    // cout << pingMetadata << endl;
 }
 
 void print_dummy(const OculusMessageHeader& msg)
 {
     static unsigned int count = 0;
     cout << "=============== Got dummy : " << count++ << endl;
-    //cout << msg << endl;
+    // cout << msg << endl;
 }
 
 int main()
 {
     auto ioService = std::make_shared<SonarDriver::IoService>();
-    SonarDriver driver(ioService);
-    
-    driver.add_ping_callback(&print_ping);
-    driver.add_dummy_callback(&print_dummy);
+    SonarDriver driver(ioService, spdlog::get("console"));
 
-    ioService->run(); // is blocking
+    driver.ping_callbacks().append(&print_ping);
+    driver.dummy_callbacks().append(&print_dummy);
+
+    ioService->run();  // is blocking
 
     return 0;
 }
-
-

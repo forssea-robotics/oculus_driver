@@ -21,37 +21,40 @@
 #include <thread>
 using namespace std;
 
-#include <oculus_driver/AsyncService.h>
-#include <oculus_driver/SonarDriver.h>
+#include <spdlog/spdlog.h>
+
+#include "oculus_driver/AsyncService.h"
+#include "oculus_driver/SonarDriver.h"
 using namespace oculus;
+
 
 void print_ping(const PingMessage::ConstPtr& ping)
 {
     cout << "=============== Got Ping :" << endl;
-    //cout << pingMetadata << endl;
-    //cout << pingMetadata.fireMessage.gainPercent << endl;
+    // cout << pingMetadata << endl;
+    // cout << pingMetadata.fireMessage.gainPercent << endl;
 }
 
 void print_dummy(const OculusMessageHeader& msg)
 {
     cout << "=============== Got dummy :" << endl;
-    //cout << msg << endl;
+    // cout << msg << endl;
 }
 
 
 int main()
 {
-    //Sonar sonar;
+    // Sonar sonar;
     AsyncService ioService;
-    SonarDriver sonar(ioService.io_service());
-    
-    sonar.add_ping_callback(&print_ping);
-    sonar.add_dummy_callback(&print_dummy);
+    SonarDriver sonar(ioService.io_service(), spdlog::get("console"));
+
+    sonar.ping_callbacks().append(&print_ping);
+    sonar.dummy_callbacks().append(&print_dummy);
 
     ioService.start();
 
-    //sonar.request_fire_config(default_fire_config());
-    //sonar.request_fire_config(default_fire_config());
+    // sonar.request_fire_config(default_fire_config());
+    // sonar.request_fire_config(default_fire_config());
 
     getchar();
 
@@ -59,5 +62,3 @@ int main()
 
     return 0;
 }
-
-
