@@ -18,7 +18,7 @@
 
 #include "oculus_driver/print_utils.h"
 
-#include <magic_enum_all.hpp>
+#include <magic_enum/magic_enum_all.hpp>
 
 namespace oculus
 {

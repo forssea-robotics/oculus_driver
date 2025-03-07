@@ -18,7 +18,7 @@
 
 #include "oculus_driver/SonarClient.h"
 
-#include <magic_enum_all.hpp>
+#include <magic_enum/magic_enum_all.hpp>
 
 namespace oculus
 {
