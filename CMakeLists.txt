@@ -7,6 +7,10 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/DefaultBuildType.cmake)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)  # Ensures only pure C++20 is used
+
+# Force the compiler flag in case CMake isn't passing it properly
+add_compile_options(-std=c++20)
 
 find_package(PkgConfig REQUIRED)
 find_package(Boost COMPONENTS system thread REQUIRED)
@@ -75,7 +79,15 @@ install(DIRECTORY include/oculus_driver
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 install(TARGETS ${PROJECT_NAME}
-    DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    EXPORT ${PROJECT_NAME}Targets)
+
+# install the exported targets
+install(EXPORT ${PROJECT_NAME}Targets
+    FILE ${PROJECT_NAME}Targets.cmake
+    # NAMESPACE ${PROJECT_NAME}:: # namespacing does not play well with fetch content
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}
+)
 
 # ###########
 # # Config ##
@@ -113,6 +125,11 @@ if(BUILD_PYTHON)
         message(FATAL_ERROR "Failed to install oculus_driver_python package with pip3")
     endif()
 endif()
+
+export(EXPORT ${PROJECT_NAME}Targets
+    # NAMESPACE ${PROJECT_NAME}:: # namespacing does not play well with fetch content
+    FILE "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Targets.cmake"
+)
 
 if(BUILD_TESTS)
     add_subdirectory(tests)
