@@ -17,11 +17,14 @@
  *****************************************************************************/
 
 #include <iostream>
+#include <memory>
+#include <oculus_driver/OculusMessage.h>
 #include <sstream>
 
 #include <spdlog/spdlog.h>
 
 #include "oculus_driver/AsyncService.h"
+#include "oculus_driver/Oculus.h"
 #include "oculus_driver/SonarDriver.h"
 
 
@@ -40,7 +43,7 @@ void print_dummy(const OculusMessageHeader& msg)
     // cout << msg << endl;
 }
 
-void print_all(const Message::ConstPtr& msg)
+void print_all(const std::shared_ptr<const Message>& msg)
 {
     switch (msg->header().msgId)
     {
@@ -72,7 +75,7 @@ int main()
 
     // sonar.add_ping_callback(&print_ping);
     // sonar.add_dummy_callback(&print_dummy);
-    sonar.message_callbacks().append(&print_all);
+    sonar.add_callback<Message>(oculus::MessageType::BASE_MESSAGE, [&](const std::shared_ptr<const Message>& msg){print_all(msg);});
 
     ioService.start();
 
@@ -86,7 +89,7 @@ int main()
     auto config = default_ping_config();
     config.pingRate = PingRateType::PingRateStandby;
     sonar.send_ping_config(config);
-    sonar.dummy_callbacks().append([](const OculusMessageHeader& header) {
+    sonar.add_callback<oculus::DummyMessage>(oculus::MessageType::DUMMY_MESSAGE, [](const std::shared_ptr<const oculus::DummyMessage>& msg) {
         std::cout << "Got awaited dummy !" << std::endl;
     });
     std::cout << "After awaited dummy" << std::endl;

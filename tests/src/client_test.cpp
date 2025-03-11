@@ -26,14 +26,14 @@ using namespace std;
 using namespace oculus;
 
 
-void print_ping(const PingMessage::ConstPtr& ping)
+void print_ping(const std::shared_ptr<const oculus::PingMessage>& ping)
 {
     static unsigned int count = 0;
     cout << "=============== Got Ping : " << count++ << endl;
     // cout << pingMetadata << endl;
 }
 
-void print_dummy(const OculusMessageHeader& msg)
+void print_dummy(const std::shared_ptr<const oculus::DummyMessage>& msg)
 {
     static unsigned int count = 0;
     cout << "=============== Got dummy : " << count++ << endl;
@@ -45,8 +45,8 @@ int main()
     auto ioService = std::make_shared<SonarDriver::IoService>();
     SonarDriver driver(ioService, spdlog::get("console"));
 
-    driver.ping_callbacks().append(&print_ping);
-    driver.dummy_callbacks().append(&print_dummy);
+    driver.add_callback<oculus::PingMessage>(oculus::MessageType::PING_MESSAGE, [&](const std::shared_ptr<const oculus::PingMessage>& msg){print_ping(msg);});
+    driver.add_callback<oculus::DummyMessage>(oculus::MessageType::DUMMY_MESSAGE, [](const std::shared_ptr<const oculus::DummyMessage>& msg){print_dummy(msg);});
 
     ioService->run();  // is blocking
 

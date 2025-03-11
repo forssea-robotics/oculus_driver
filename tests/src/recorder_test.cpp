@@ -41,7 +41,7 @@ void print_dummy(const OculusMessageHeader& msg)
     // cout << msg << endl;
 }
 
-void print_all(const Message::ConstPtr& msg)
+void print_all(const std::shared_ptr<const Message>& msg)
 {
     switch (msg->header().msgId) {
         case MsgSimplePingResult:
@@ -65,7 +65,7 @@ void print_all(const Message::ConstPtr& msg)
 }
 
 void recorder_callback(const Recorder* recorder,
-                       const Message::ConstPtr& msg)
+                       const std::shared_ptr<const Message>& msg)
 {
     recorder->write(msg);
 }
@@ -78,14 +78,14 @@ int main()
 
     // sonar.add_ping_callback(&print_ping);
     // sonar.add_dummy_callback(&print_dummy);
-    sonar.message_callbacks().append(&print_all);
+    sonar.add_callback<Message>(oculus::MessageType::BASE_MESSAGE, [&](const std::shared_ptr<const Message>& msg){print_all(msg);});
 
     ioService.start();
 
     Recorder recorder;
     recorder.open("output.oculus", true);
 
-    sonar.message_callbacks().append(
+    sonar.add_callback<Message>(oculus::MessageType::BASE_MESSAGE, 
         std::bind(recorder_callback, &recorder, std::placeholders::_1));
 
     getchar();

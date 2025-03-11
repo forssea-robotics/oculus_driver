@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *****************************************************************************/
 
+#include "oculus_driver/OculusMessage.h"
 #include <iostream>
 #include <sstream>
 #include <thread>
@@ -28,17 +29,17 @@ using namespace std;
 using namespace oculus;
 
 
-void print_ping(const PingMessage::ConstPtr& ping)
+void print_ping(const std::shared_ptr<const oculus::PingMessage>& ping)
 {
     cout << "=============== Got Ping :" << endl;
-    // cout << pingMetadata << endl;
-    // cout << pingMetadata.fireMessage.gainPercent << endl;
+    cout << ping->header() << endl;
+    cout << ping->gain_percent() << endl;
 }
 
-void print_dummy(const OculusMessageHeader& msg)
+void print_dummy(const std::shared_ptr<const oculus::DummyMessage>& msg)
 {
     cout << "=============== Got dummy :" << endl;
-    // cout << msg << endl;
+    cout << msg->header << endl;
 }
 
 
@@ -48,8 +49,8 @@ int main()
     AsyncService ioService;
     SonarDriver sonar(ioService.io_service(), spdlog::get("console"));
 
-    sonar.ping_callbacks().append(&print_ping);
-    sonar.dummy_callbacks().append(&print_dummy);
+    sonar.add_callback<oculus::PingMessage>(oculus::MessageType::PING_MESSAGE, [&](const std::shared_ptr<const oculus::PingMessage>& msg){print_ping(msg);});
+    sonar.add_callback<oculus::DummyMessage>(oculus::MessageType::DUMMY_MESSAGE, [](const std::shared_ptr<const oculus::DummyMessage>& msg){print_dummy(msg);});
 
     ioService.start();
 
