@@ -96,18 +96,6 @@ struct ConfigMessage : public MessageTypeDecorator<MessageType::CONFIG_MESSAGE>
     virtual ~ConfigMessage() = default;
 };
 
-struct StatusMessage : public MessageTypeDecorator<MessageType::STATUS_MESSAGE>
-{
-    const OculusStatusMsg status;
-
-    StatusMessage(const OculusStatusMsg& status)
-        : status(status)
-    {
-    }
-
-    virtual ~StatusMessage() = default;
-};
-
 class Message : public MessageTypeDecorator<MessageType::BASE_MESSAGE>
 {
   public:
@@ -229,6 +217,136 @@ class Message : public MessageTypeDecorator<MessageType::BASE_MESSAGE>
     {
         return this->message_id() == OculusMessageType::MsgSimplePingResult;
     }
+
+    bool is_status_message() const
+    {
+        return this->message_id() == OculusMessageType::MsgStatus;
+    }
+};
+
+class StatusWrapper : public Message
+{
+  public:
+    using Ptr = std::shared_ptr<StatusWrapper>;
+    using ConstPtr = std::shared_ptr<const StatusWrapper>;
+
+  protected:
+    StatusWrapper(const Message::ConstPtr& msg)
+        : Message(*msg)
+    {
+        if (!msg->is_status_message())
+        {
+            throw std::runtime_error("Tried to initialize a StatusWrapper with a non-status message");
+        }
+    }
+
+  public:
+    virtual ~StatusWrapper() = default;
+
+    static Ptr Create(const Message::ConstPtr& msg)
+    {
+        return Ptr(new StatusWrapper(msg));
+    }
+
+    const OculusStatusMsg& metadata() const
+    {
+        return *reinterpret_cast<const OculusStatusMsg*>(this->data().data());
+    }
+
+    Message::ConstPtr message() const { return this->message(); }
+
+    uint32_t deviceId() const { return this->metadata().deviceId; }
+    uint16_t deviceType() const { return this->metadata().deviceType; }
+    uint16_t partNumber() const { return this->metadata().partNumber; }
+    uint32_t status() const { return this->metadata().status; }
+    uint32_t ipAddr() const { return this->metadata().ipAddr; }
+    uint32_t ipMask() const { return this->metadata().ipMask; }
+    uint32_t clientAddr() const { return this->metadata().clientAddr; }
+
+
+    std::array<uint8_t, 6> macAddress() const
+    {
+        return {this->metadata().macAddr0, this->metadata().macAddr1, this->metadata().macAddr2,
+                this->metadata().macAddr3, this->metadata().macAddr4, this->metadata().macAddr5};
+    }
+
+    std::array<double, 7> temperature() const
+    {
+        auto metadata = this->metadata();
+        return {metadata.temperature0, metadata.temperature1, metadata.temperature2,
+            metadata.temperature3, metadata.temperature4, metadata.temperature5,
+            metadata.temperature6};
+    }
+
+    double pressure() const { return this->metadata().pressure; }
+
+    // private:
+    //     Message::ConstPtr msg_;  // Store the raw message
+};
+
+struct StatusMessage : public MessageTypeDecorator<MessageType::STATUS_MESSAGE>
+{
+  public:
+    using Ptr = std::shared_ptr<StatusMessage>;
+    using ConstPtr = std::shared_ptr<const StatusMessage>;
+
+  protected:
+    StatusWrapper::ConstPtr statusData_;
+    OculusStatusMsg status_; // Stores a direct copy when constructed from OculusStatusMsg
+
+  public:
+    // Constructor from Message::ConstPtr (keeps StatusWrapper for parsing raw messages)
+    StatusMessage(const Message::ConstPtr& msg)
+        : statusData_(StatusWrapper::Create(msg)), status_(statusData_->metadata())
+    {
+    }
+
+    // Constructor from an explicit OculusStatusMsg instance
+    StatusMessage(const OculusStatusMsg& status)
+        : status_(status)
+    {
+    }
+
+    virtual ~StatusMessage() = default;
+
+    static Ptr Create(const Message::ConstPtr& msg)
+    {
+        return std::make_shared<StatusMessage>(msg);
+    }
+
+    static Ptr Create(const OculusStatusMsg& status)
+    {
+        return std::make_shared<StatusMessage>(status);
+    }
+
+    Message::ConstPtr message() const
+    {
+        return statusData_ ? statusData_->message() : nullptr;
+    }
+
+    uint32_t deviceId() const { return status_.deviceId; }
+    uint16_t deviceType() const { return status_.deviceType; }
+    uint16_t partNumber() const { return status_.partNumber; }
+    uint32_t ipAddr() const { return status_.ipAddr; }
+    uint32_t ipMask() const { return status_.ipMask; }
+    uint32_t clientAddr() const { return status_.clientAddr; }
+
+    OculusStatusMsg status() const { return status_; }
+
+    std::array<uint8_t, 6> macAddress() const
+    {
+        return {status_.macAddr0, status_.macAddr1, status_.macAddr2,
+                status_.macAddr3, status_.macAddr4, status_.macAddr5};
+    }
+
+    std::array<double, 7> temperature() const
+    {
+        return {status_.temperature0, status_.temperature1, status_.temperature2,
+            status_.temperature3, status_.temperature4, status_.temperature5,
+            status_.temperature6};
+    }
+
+    double pressure() const { return status_.pressure; }
 };
 
 class PingWrapper 
