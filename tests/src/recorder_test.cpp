@@ -20,70 +20,73 @@
 #include <sstream>
 using namespace std;
 
-#include <oculus_driver/AsyncService.h>
-#include <oculus_driver/SonarDriver.h>
-#include <oculus_driver/Recorder.h>
+#include <spdlog/spdlog.h>
+
+#include "oculus_driver/AsyncService.h"
+#include "oculus_driver/SonarDriver.h"
+#include "oculus_driver/Recorder.h"
 using namespace oculus;
 
-void print_ping(const OculusSimplePingResult& pingMetadata,
+
+void print_ping(const OculusSimplePingResult2& pingMetadata,
                 const std::vector<uint8_t>& pingData)
 {
     cout << "=============== Got Ping :" << endl;
-    //cout << pingMetadata << endl;
+    // cout << pingMetadata << endl;
 }
 
 void print_dummy(const OculusMessageHeader& msg)
 {
     cout << "=============== Got dummy :" << endl;
-    //cout << msg << endl;
+    // cout << msg << endl;
 }
 
-void print_all(const Message::ConstPtr& msg)
+void print_all(const std::shared_ptr<const Message>& msg)
 {
-    switch(msg->header().msgId) {
-        case messageSimplePingResult:
+    switch (msg->header().msgId) {
+        case MsgSimplePingResult:
             std::cout << "Got messageSimplePingResult" << endl;
             break;
-        case messageDummy:
+        case MsgDummy:
             std::cout << "Got messageDummy" << endl;
             break;
-        case messageSimpleFire:
+        case MsgSimpleFire:
             std::cout << "Got messageSimpleFire" << endl;
             break;
-        case messagePingResult:
+        case MsgPingResult:
             std::cout << "Got messagePingResult" << endl;
             break;
-        case messageUserConfig:
+        case MsgUserConfig:
             std::cout << "Got messageUserConfig" << endl;
             break;
         default:
             break;
     }
-
 }
 
 void recorder_callback(const Recorder* recorder,
-                       const Message::ConstPtr& msg)
+                       const std::shared_ptr<const Message>& msg)
 {
     recorder->write(msg);
 }
 
 int main()
 {
-    //Sonar sonar;
+    // Sonar sonar;
     AsyncService ioService;
-    SonarDriver sonar(ioService.io_service());
-    
-    //sonar.add_ping_callback(&print_ping);
-    //sonar.add_dummy_callback(&print_dummy);
-    sonar.add_message_callback(&print_all);
+    SonarDriver sonar(ioService.io_service(), spdlog::get("console"));
+
+    // sonar.add_ping_callback(&print_ping);
+    // sonar.add_dummy_callback(&print_dummy);
+    sonar.add_callback<Message>(oculus::MessageType::BASE_MESSAGE, [&](const std::shared_ptr<const Message>& msg){print_all(msg);});
 
     ioService.start();
 
     Recorder recorder;
     recorder.open("output.oculus", true);
 
-    sonar.add_message_callback(std::bind(recorder_callback, &recorder, std::placeholders::_1));
+    sonar.add_callback<Message>(oculus::MessageType::BASE_MESSAGE, 
+        std::bind(recorder_callback, &recorder, std::placeholders::_1));
 
     getchar();
 
@@ -93,5 +96,3 @@ int main()
 
     return 0;
 }
-
-

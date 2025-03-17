@@ -2,7 +2,9 @@
 *.so
 
 build
-__pycache__
-oculus_python.egg-info/
+*.oculus
+*.mp4
+build_imx
+.vscode
 
 .vscode

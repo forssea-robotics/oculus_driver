@@ -16,42 +16,46 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *****************************************************************************/
 
+#include "oculus_driver/OculusMessage.h"
 #include <iostream>
 #include <sstream>
 #include <thread>
 using namespace std;
 
-#include <oculus_driver/AsyncService.h>
-#include <oculus_driver/SonarDriver.h>
+#include <spdlog/spdlog.h>
+
+#include "oculus_driver/AsyncService.h"
+#include "oculus_driver/SonarDriver.h"
 using namespace oculus;
 
-void print_ping(const PingMessage::ConstPtr& ping)
+
+void print_ping(const std::shared_ptr<const oculus::PingMessage>& ping)
 {
     cout << "=============== Got Ping :" << endl;
-    //cout << pingMetadata << endl;
-    //cout << pingMetadata.fireMessage.gainPercent << endl;
+    cout << ping->header() << endl;
+    cout << ping->gain_percent() << endl;
 }
 
-void print_dummy(const OculusMessageHeader& msg)
+void print_dummy(const std::shared_ptr<const oculus::DummyMessage>& msg)
 {
     cout << "=============== Got dummy :" << endl;
-    //cout << msg << endl;
+    cout << msg->header << endl;
 }
 
 
 int main()
 {
-    //Sonar sonar;
+    // Sonar sonar;
     AsyncService ioService;
-    SonarDriver sonar(ioService.io_service());
-    
-    sonar.add_ping_callback(&print_ping);
-    sonar.add_dummy_callback(&print_dummy);
+    SonarDriver sonar(ioService.io_service(), spdlog::get("console"));
+
+    sonar.add_callback<oculus::PingMessage>(oculus::MessageType::PING_MESSAGE, [&](const std::shared_ptr<const oculus::PingMessage>& msg){print_ping(msg);});
+    sonar.add_callback<oculus::DummyMessage>(oculus::MessageType::DUMMY_MESSAGE, [](const std::shared_ptr<const oculus::DummyMessage>& msg){print_dummy(msg);});
 
     ioService.start();
 
-    //sonar.request_fire_config(default_fire_config());
-    //sonar.request_fire_config(default_fire_config());
+    // sonar.request_fire_config(default_fire_config());
+    // sonar.request_fire_config(default_fire_config());
 
     getchar();
 
@@ -59,5 +63,3 @@ int main()
 
     return 0;
 }
-
-

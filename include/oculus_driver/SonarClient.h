@@ -16,27 +16,30 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *****************************************************************************/
 
-#ifndef _OCULUS_DRIVER_SONAR_CLIENT_H_
-#define _OCULUS_DRIVER_SONAR_CLIENT_H_
+#pragma once
 
-#include <iostream>
-#include <iomanip>
-#include <cstring>
+#include <eventpp/callbacklist.h>
+#include <eventpp/eventdispatcher.h>
+#include <eventpp/utilities/argumentadapter.h>
+#include <fmt/format.h>
+#include <spdlog/spdlog.h>
+
+#include <boost/asio.hpp>
+#include <chrono>
 #include <cmath>
+#include <cstring>
+#include <iomanip>
+#include <iostream>
 #include <memory>
 #include <mutex>
 #include <thread>
-#include <chrono>
 #include <type_traits>
 
-#include <boost/asio.hpp>
-
-#include <oculus_driver/Oculus.h>
-#include <oculus_driver/utils.h>
-#include <oculus_driver/print_utils.h>
-#include <oculus_driver/StatusListener.h>
-
-#include <oculus_driver/OculusMessage.h>
+#include "StatusListener.h"
+#include "oculus_driver/Oculus.h"
+#include "oculus_driver/OculusMessage.h"
+#include "print_utils.h"
+#include "utils.h"
 
 namespace oculus {
 
@@ -69,10 +72,18 @@ class SonarClient
 
     using TimeSource = Message::TimeSource;
     using TimePoint  = Message::TimePoint;
+    
+    using ErrorCallbacksType = eventpp::CallbackList<void(const boost::system::error_code&)>;
+    using ConnectCallbacksType = eventpp::CallbackList<void()>;
+    using MessageType = oculus::MessageType;
+
+    private:
+    const std::shared_ptr<spdlog::logger> logger;
 
     protected:
-    
     IoServicePtr       ioService_;
+
+
     SocketPtr          socket_;
     EndPoint           remote_;
     uint16_t           sonarId_;
@@ -84,7 +95,22 @@ class SonarClient
     Clock                        clock_;
     
     StatusListener statusListener_;
-    unsigned int   statusCallbackId_;
+    // ErrorCallbacksType errorCallbacks;
+    // ConnectCallbacksType connectCallbacks;
+    eventpp::EventDispatcher<MessageType, void(const std::shared_ptr<const BaseMessage>)> dispatcher;
+
+
+    template <typename T>
+    void dispatch(const std::shared_ptr<const T> msg) {
+        dispatcher.dispatch(T::mtype, msg);
+    }
+
+    template <typename T, typename... Args>
+    typename std::enable_if_t<std::is_constructible_v<T, Args...>> 
+            dispatch(Args &&...args) {
+        dispatch(std::make_shared<const T> (std::forward<Args>(args)...));
+    }
+    
 
     Message::Ptr message_;
 
@@ -95,6 +121,7 @@ class SonarClient
     public:
 
     SonarClient(const IoServicePtr& ioService,
+                const std::shared_ptr<spdlog::logger>& logger,
                 const Duration& checkerPeriod = boost::posix_time::seconds(1));
 
     bool is_valid(const OculusMessageHeader& header);
@@ -107,7 +134,7 @@ class SonarClient
     void close_connection();
     void on_first_status(const OculusStatusMsg& msg);
     void connect_callback(const boost::system::error_code& err);
-    virtual void on_connect();
+    virtual void on_connect() = 0;
 
     // main loop begin
     void initiate_receive();
@@ -118,14 +145,92 @@ class SonarClient
     
     // This is called regardless of the content of the message.
     // To be reimplemented in a subclass (does nothing by default).
-    virtual void handle_message(const Message::ConstPtr& msg);
+    virtual void handle_message(const Message::ConstPtr& msg) = 0;
 
     template <typename TimeT = float>
     TimeT time_since_last_message() const { return clock_.now<TimeT>(); }
 
     TimePoint last_header_stamp() const { return message_->timestamp(); }
+
+    // inline auto& connect_callbacks() {return connectCallbacks; }
+    inline auto& status_callbacks() { return statusListener_.callbacks(); }
+    // inline auto& error_callbacks() { return errorCallbacks; }
+
+    inline auto& get_dispatcher() { return dispatcher; }
+
+
+    template <typename T>
+    void add_callback(const MessageType message_type,
+                        std::function<void(const std::shared_ptr<const T>)> callback) {
+        static_assert(std::is_base_of<BaseMessage, T>::value,
+                    "T must be derived from BaseMessage");
+        dispatcher.appendListener(
+            message_type,
+            eventpp::argumentAdapter<void(const std::shared_ptr<const T>)>(callback));
+    }
+
+    template <typename T>
+    bool add_timed_callback(const MessageType message_type,
+                            std::function<void(const std::shared_ptr<const T>)> callback, 
+                            int timeout_ms = 5000) {
+        static_assert(std::is_base_of<BaseMessage, T>::value,
+                    "T must be derived from BaseMessage");
+        
+        std::atomic_flag called;
+        auto start = std::chrono::steady_clock::now();
+
+        auto handle = add_counter_callback<T>(message_type, 
+            [start, &callback, &called, timeout_ms](const std::shared_ptr<const T> msg) {
+                if (std::chrono::steady_clock::now() - start < std::chrono::milliseconds(timeout_ms)) {
+                    callback(msg);
+                    called.test_and_set();
+                }
+            }, 1);
+
+        while (!called.test() || std::chrono::steady_clock::now() - start <
+                                std::chrono::milliseconds(timeout_ms)) {
+            std::this_thread::sleep_for (std::chrono::milliseconds(100));
+        }
+        dispatcher.removeListener(message_type, handle);
+        return called.test();
+    }
+
+    template <typename T>
+    auto add_counter_callback(const MessageType message_type,
+                                std::function<void(const std::shared_ptr<const T>)> callback, 
+                                const int triggerCount = 1) {
+        static_assert(std::is_base_of<BaseMessage, T>::value,
+                    "T must be derived from BaseMessage");
+        return eventpp::counterRemover(dispatcher).appendListener(
+            message_type,
+            eventpp::argumentAdapter<void(const std::shared_ptr<const T>)>(
+                callback), triggerCount);
+    }
+
+    template <typename T>
+    void add_callback(std::function<void(const std::shared_ptr<const T>)> callback) {
+        add_callback<T>(T::mtype, callback);
+    }
+
+    template <typename T>
+    void add_callback(std::initializer_list<MessageType> messages,
+                        std::function<void(const std::shared_ptr<const T>)> callback) {
+        for (auto message : messages) {
+            add_callback<T>(message, callback);
+        }
+    }
+
+    template <typename T>
+    bool add_timed_callback(std::function<void(const std::shared_ptr<const T>)> callback, 
+                            int timeout_ms = 5000) {
+        return add_timed_callback<T>(T::mtype, callback, timeout_ms);
+    }
+    
+    template <typename T>
+    void add_counter_callback(std::function<void(const std::shared_ptr<const T>)> callback, 
+                                const int triggerCount = 1) {
+        add_counter_callback<T>(T::mtype, callback, triggerCount);
+    }
 };
 
-} //namespace oculus
-
-#endif //_OCULUS_DRIVER_SONAR_CLIENT_H_
+}  // namespace oculus
